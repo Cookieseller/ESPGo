@@ -16,19 +16,20 @@ private:
 	void GatherProps(CSVCMsg_SendTable *pTable, int nServerClass);
 	bool IsPropExcluded(CSVCMsg_SendTable * pTable, const CSVCMsg_SendTable::sendprop_t & checkSendProp);
 	void GatherProps_IterateProps(CSVCMsg_SendTable *pTable, int nServerClass, std::vector< FlattenedPropEntry > &flattenedProps);
+	bool EntityEnterPVS(CBitRead entityBitBuffer, int newEntity);
+	bool EntityLeavePVS(int newEntity, bool isDelta);
+	bool EntityDelta(CBitRead entityBitBuffer, int newEntity);
 
-
+	bool g_bDumpPacketEntities = false;
+	int m_nServerClassBits;
+	std::vector< ServerClass_t > m_serverClasses;
+	std::vector< CSVCMsg_SendTable > m_dataTables;
+	std::vector< ExcludeEntry > m_currentExcludes;
+	std::vector< EntityEntry * > m_entities;
 
 public:
 	CNetMessageDecoder();
 	bool ParseDataTable(CBitRead &buffer);
-	void DecodeNetMessage(const void *parseBuffer, int BufferSize, std::list<EntityEntry> &entities);
-
-	bool g_bDumpPacketEntities = false;
-	int s_nServerClassBits;
-	std::vector< ServerClass_t > s_ServerClasses;
-	std::vector< CSVCMsg_SendTable > s_DataTables;
-	std::vector< ExcludeEntry > s_currentExcludes;
-	std::vector< EntityEntry * > s_Entities;
+	void DecodeNetMessage(const void *parseBuffer, int bufferSize, std::list<EntityEntry> &entities);
 };
 

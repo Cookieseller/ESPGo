@@ -3,17 +3,15 @@
 
 CNetMessageDecoder::CNetMessageDecoder()
 {
-	s_nServerClassBits = 0;
+	m_nServerClassBits = 0;
 }
 
 EntityEntry* CNetMessageDecoder::FindEntity(int nEntity)
 {
-	for (std::vector<EntityEntry *>::iterator i = s_Entities.begin(); i != s_Entities.end(); i++)
+	for (std::vector<EntityEntry *>::iterator i = m_entities.begin(); i != m_entities.end(); i++)
 	{
 		if ((*i)->m_nEntity == nEntity)
-		{
 			return *i;
-		}
 	}
 
 	return NULL;
@@ -21,18 +19,11 @@ EntityEntry* CNetMessageDecoder::FindEntity(int nEntity)
 
 int CNetMessageDecoder::ReadFieldIndex(CBitRead &entityBitBuffer, int lastIndex, bool bNewWay)
 {
-	if (bNewWay)
-	{
-		if (entityBitBuffer.ReadOneBit())
-		{
-			return lastIndex + 1;
-		}
-	}
-
 	int ret = 0;
+
 	if (bNewWay && entityBitBuffer.ReadOneBit())
 	{
-		ret = entityBitBuffer.ReadUBitLong(3);  // read 3 bits
+		return lastIndex + 1;
 	}
 	else
 	{
@@ -55,31 +46,27 @@ int CNetMessageDecoder::ReadFieldIndex(CBitRead &entityBitBuffer, int lastIndex,
 	}
 
 	if (ret == 0xFFF) // end marker is 4095 for cs:go
-	{
 		return -1;
-	}
 
 	return lastIndex + 1 + ret;
 }
 
 CSVCMsg_SendTable* CNetMessageDecoder::GetTableByClassID(uint32 nClassID)
 {
-	for (uint32 i = 0; i < s_ServerClasses.size(); i++)
+	for (uint32 i = 0; i < m_serverClasses.size(); i++)
 	{
-		if (s_ServerClasses[i].nClassID == nClassID)
-		{
-			return &(s_DataTables[s_ServerClasses[i].nDataTable]);
-		}
+		if (m_serverClasses[i].nClassID == nClassID)
+			return &(m_dataTables[m_serverClasses[i].nDataTable]);
 	}
+
 	return NULL;
 }
 
 FlattenedPropEntry* CNetMessageDecoder::GetSendPropByIndex(uint32 uClass, uint32 uIndex)
 {
-	if (uIndex < s_ServerClasses[uClass].flattenedProps.size())
-	{
-		return &s_ServerClasses[uClass].flattenedProps[uIndex];
-	}
+	if (uIndex < m_serverClasses[uClass].flattenedProps.size())
+		return &m_serverClasses[uClass].flattenedProps[uIndex];
+	
 	return NULL;
 }
 
@@ -87,7 +74,7 @@ bool CNetMessageDecoder::ReadNewEntity(CBitRead &entityBitBuffer, EntityEntry *p
 {
 	bool bNewWay = (entityBitBuffer.ReadOneBit() == 1);  // 0 = old way, 1 = new way
 
-	std::vector< int > fieldIndices;
+	std::vector<int> fieldIndices;
 
 	int index = -1;
 	do
@@ -129,7 +116,7 @@ EntityEntry* CNetMessageDecoder::AddEntity(int nEntity, uint32 uClass, uint32 uS
 	else
 	{
 		pEntity = new EntityEntry(nEntity, uClass, uSerialNum);
-		s_Entities.push_back(pEntity);
+		m_entities.push_back(pEntity);
 	}
 
 	return pEntity;
@@ -137,12 +124,12 @@ EntityEntry* CNetMessageDecoder::AddEntity(int nEntity, uint32 uClass, uint32 uS
 
 void CNetMessageDecoder::RemoveEntity(int nEntity)
 {
-	for (std::vector< EntityEntry * >::iterator i = s_Entities.begin(); i != s_Entities.end(); i++)
+	for (std::vector< EntityEntry * >::iterator i = m_entities.begin(); i != m_entities.end(); i++)
 	{
 		EntityEntry *pEntity = *i;
 		if (pEntity->m_nEntity == nEntity)
 		{
-			s_Entities.erase(i);
+			m_entities.erase(i);
 			delete pEntity;
 			break;
 		}
@@ -153,15 +140,11 @@ bool CNetMessageDecoder::ReadFromBuffer(CBitRead &buffer, void **pBuffer, int& s
 {
 	size = buffer.ReadVarInt32();
 	if (size < 0 || size > NET_MAX_PAYLOAD)
-	{
 		return false;
-	}
 
 	// Check its valid
 	if (size > buffer.GetNumBytesLeft())
-	{
 		return false;
-	}
 
 	*pBuffer = malloc(size);
 
@@ -184,13 +167,12 @@ bool CNetMessageDecoder::ReadFromBuffer(CBitRead &buffer, void **pBuffer, int& s
 
 CSVCMsg_SendTable* CNetMessageDecoder::GetTableByName(const char *pName)
 {
-	for (unsigned int i = 0; i < s_DataTables.size(); i++)
+	for (unsigned int i = 0; i < m_dataTables.size(); i++)
 	{
-		if (s_DataTables[i].net_table_name().compare(pName) == 0)
-		{
-			return &(s_DataTables[i]);
-		}
+		if (m_dataTables[i].net_table_name().compare(pName) == 0)
+			return &(m_dataTables[i]);
 	}
+
 	return NULL;
 }
 
@@ -200,17 +182,13 @@ void CNetMessageDecoder::GatherExcludes(CSVCMsg_SendTable *pTable)
 	{
 		const CSVCMsg_SendTable::sendprop_t& sendProp = pTable->props(iProp);
 		if (sendProp.flags() & SPROP_EXCLUDE)
-		{
-			s_currentExcludes.push_back(ExcludeEntry(sendProp.var_name().c_str(), sendProp.dt_name().c_str(), pTable->net_table_name().c_str()));
-		}
+			m_currentExcludes.push_back(ExcludeEntry(sendProp.var_name().c_str(), sendProp.dt_name().c_str(), pTable->net_table_name().c_str()));
 
 		if (sendProp.type() == DPT_DataTable)
 		{
 			CSVCMsg_SendTable *pSubTable = GetTableByName(sendProp.dt_name().c_str());
 			if (pSubTable != NULL)
-			{
 				GatherExcludes(pSubTable);
-			}
 		}
 	}
 }
@@ -220,7 +198,7 @@ void CNetMessageDecoder::GatherProps(CSVCMsg_SendTable *pTable, int nServerClass
 	std::vector< FlattenedPropEntry > tempFlattenedProps;
 	GatherProps_IterateProps(pTable, nServerClass, tempFlattenedProps);
 
-	std::vector< FlattenedPropEntry > &flattenedProps = s_ServerClasses[nServerClass].flattenedProps;
+	std::vector< FlattenedPropEntry > &flattenedProps = m_serverClasses[nServerClass].flattenedProps;
 	for (uint32 i = 0; i < tempFlattenedProps.size(); i++)
 	{
 		flattenedProps.push_back(tempFlattenedProps[i]);
@@ -229,13 +207,11 @@ void CNetMessageDecoder::GatherProps(CSVCMsg_SendTable *pTable, int nServerClass
 
 bool CNetMessageDecoder::IsPropExcluded(CSVCMsg_SendTable *pTable, const CSVCMsg_SendTable::sendprop_t &checkSendProp)
 {
-	for (unsigned int i = 0; i < s_currentExcludes.size(); i++)
+	for (unsigned int i = 0; i < m_currentExcludes.size(); i++)
 	{
-		if (pTable->net_table_name().compare(s_currentExcludes[i].m_pDTName) == 0 &&
-			checkSendProp.var_name().compare(s_currentExcludes[i].m_pVarName) == 0)
-		{
+		if (pTable->net_table_name().compare(m_currentExcludes[i].m_pDTName) == 0 &&
+			checkSendProp.var_name().compare(m_currentExcludes[i].m_pVarName) == 0)
 			return true;
-		}
 	}
 	return false;
 }
@@ -250,9 +226,7 @@ void CNetMessageDecoder::GatherProps_IterateProps(CSVCMsg_SendTable *pTable, int
 		if ((sendProp.flags() & SPROP_INSIDEARRAY) ||
 			(sendProp.flags() & SPROP_EXCLUDE) ||
 			IsPropExcluded(pTable, sendProp))
-		{
 			continue;
-		}
 
 		if (sendProp.type() == DPT_DataTable)
 		{
@@ -260,39 +234,31 @@ void CNetMessageDecoder::GatherProps_IterateProps(CSVCMsg_SendTable *pTable, int
 			if (pSubTable != NULL)
 			{
 				if (sendProp.flags() & SPROP_COLLAPSIBLE)
-				{
 					GatherProps_IterateProps(pSubTable, nServerClass, flattenedProps);
-				}
 				else
-				{
 					GatherProps(pSubTable, nServerClass);
-				}
 			}
 		}
 		else
 		{
 			if (sendProp.type() == DPT_Array)
-			{
 				flattenedProps.push_back(FlattenedPropEntry(&sendProp, &(pTable->props(iProp - 1))));
-			}
 			else
-			{
 				flattenedProps.push_back(FlattenedPropEntry(&sendProp, NULL));
-			}
 		}
 	}
 }
 
 void CNetMessageDecoder::FlattenDataTable(int nServerClass)
 {
-	CSVCMsg_SendTable *pTable = &s_DataTables[s_ServerClasses[nServerClass].nDataTable];
+	CSVCMsg_SendTable *pTable = &m_dataTables[m_serverClasses[nServerClass].nDataTable];
 
-	s_currentExcludes.clear();
+	m_currentExcludes.clear();
 	GatherExcludes(pTable);
 
 	GatherProps(pTable, nServerClass);
 
-	std::vector< FlattenedPropEntry > &flattenedProps = s_ServerClasses[nServerClass].flattenedProps;
+	std::vector< FlattenedPropEntry > &flattenedProps = m_serverClasses[nServerClass].flattenedProps;
 
 	// get priorities
 	std::vector< uint32 > priorities;
@@ -312,9 +278,7 @@ void CNetMessageDecoder::FlattenDataTable(int nServerClass)
 		}
 
 		if (!bFound)
-		{
 			priorities.push_back(priority);
-		}
 	}
 
 	std::sort(priorities.begin(), priorities.end());
@@ -372,7 +336,7 @@ bool CNetMessageDecoder::ParseDataTable(CBitRead &buffer)
 		if (msg.is_end())
 			break;
 
-		s_DataTables.push_back(msg);
+		m_dataTables.push_back(msg);
 	}
 
 	short nServerClasses = buffer.ReadShort();
@@ -393,16 +357,16 @@ bool CNetMessageDecoder::ParseDataTable(CBitRead &buffer)
 
 		// find the data table by name
 		entry.nDataTable = -1;
-		for (unsigned int j = 0; j < s_DataTables.size(); j++)
+		for (unsigned int j = 0; j < m_dataTables.size(); j++)
 		{
-			if (strcmp(entry.strDTName, s_DataTables[j].net_table_name().c_str()) == 0)
+			if (strcmp(entry.strDTName, m_dataTables[j].net_table_name().c_str()) == 0)
 			{
 				entry.nDataTable = j;
 				break;
 			}
 		}
 
-		s_ServerClasses.push_back(entry);
+		m_serverClasses.push_back(entry);
 	}
 
 
@@ -411,29 +375,27 @@ bool CNetMessageDecoder::ParseDataTable(CBitRead &buffer)
 		FlattenDataTable(i);
 	}
 
-	// perform integer log2() to set s_nServerClassBits
+	// perform integer log2() to set m_nServerClassBits
 	int nTemp = nServerClasses;
-	s_nServerClassBits = 0;
-	while (nTemp >>= 1) ++s_nServerClassBits;
+	m_nServerClassBits = 0;
+	while (nTemp >>= 1) ++m_nServerClassBits;
 
-	s_nServerClassBits++;
+	m_nServerClassBits++;
 
 	return true;
 }
 
-void CNetMessageDecoder::DecodeNetMessage(const void *parseBuffer, int BufferSize, std::list<EntityEntry> &entities)
+void CNetMessageDecoder::DecodeNetMessage(const void *parseBuffer, int bufferSize, std::list<EntityEntry> &entities)
 {
 	CSVCMsg_PacketEntities msg;
 
-	if (msg.ParseFromArray(parseBuffer, BufferSize))
+	if (msg.ParseFromArray(parseBuffer, bufferSize))
 	{
 		CBitRead entityBitBuffer(&msg.entity_data()[0], msg.entity_data().size());
-		bool bAsDelta = msg.is_delta();
+		bool isDelta = msg.is_delta();
 		int nHeaderCount = msg.updated_entries();
-		int nBaseline = msg.baseline();
-		bool bUpdateBaselines = msg.update_baseline();
 		int nHeaderBase = -1;
-		int nNewEntity = -1;
+		int newEntity = -1;
 		int UpdateFlags = 0;
 
 		UpdateType updateType = PreserveEnt;
@@ -448,17 +410,15 @@ void CNetMessageDecoder::DecodeNetMessage(const void *parseBuffer, int BufferSiz
 			{
 				UpdateFlags = FHDR_ZERO;
 
-				nNewEntity = nHeaderBase + 1 + entityBitBuffer.ReadUBitVar();
-				nHeaderBase = nNewEntity;
+				newEntity = nHeaderBase + 1 + entityBitBuffer.ReadUBitVar();
+				nHeaderBase = newEntity;
 
 				// leave pvs flag
 				if (entityBitBuffer.ReadOneBit() == 0)
 				{
 					// enter pvs flag
 					if (entityBitBuffer.ReadOneBit() != 0)
-					{
 						UpdateFlags |= FHDR_ENTERPVS;
-					}
 				}
 				else
 				{
@@ -466,16 +426,14 @@ void CNetMessageDecoder::DecodeNetMessage(const void *parseBuffer, int BufferSiz
 
 					// Force delete flag
 					if (entityBitBuffer.ReadOneBit() != 0)
-					{
 						UpdateFlags |= FHDR_DELETE;
-					}
 				}
 			}
 
 			for (updateType = PreserveEnt; updateType == PreserveEnt; )
 			{
 				// Figure out what kind of an update this is.
-				if (!bIsEntity || nNewEntity > ENTITY_SENTINEL)
+				if (!bIsEntity || newEntity > ENTITY_SENTINEL)
 				{
 					updateType = Finished;
 				}
@@ -483,113 +441,66 @@ void CNetMessageDecoder::DecodeNetMessage(const void *parseBuffer, int BufferSiz
 				{
 					if (UpdateFlags & FHDR_ENTERPVS)
 					{
-						updateType = EnterPVS;
+						if (!EntityEnterPVS(entityBitBuffer, newEntity))
+						{
+							fprintf(stderr, "Error reading entity! Bailing on this PacketEntities!");
+							return;
+						}
 					}
 					else if (UpdateFlags & FHDR_LEAVEPVS)
 					{
-						updateType = LeavePVS;
+						if (!EntityLeavePVS(newEntity, isDelta))
+							updateType = Failed;
 					}
 					else
 					{
-						updateType = DeltaEnt;
+						EntityDelta(entityBitBuffer, newEntity);
+						fprintf(stderr, "Error reading entity! Bailing on this PacketEntities!");
 					}
-				}
 
-				switch (updateType)
-				{
-					case EnterPVS:
-					{
-						uint32 uClass = entityBitBuffer.ReadUBitLong(s_nServerClassBits);
-						uint32 uSerialNum = entityBitBuffer.ReadUBitLong(NUM_NETWORKED_EHANDLE_SERIAL_NUMBER_BITS);
-						if (g_bDumpPacketEntities)
-						{
-							printf("Entity Enters PVS: id:%d, class:%d, serial:%d\n", nNewEntity, uClass, uSerialNum);
-						}
-						EntityEntry *pEntity = AddEntity(nNewEntity, uClass, uSerialNum);
-						if (!ReadNewEntity(entityBitBuffer, pEntity))
-						{
-							printf("*****Error reading entity! Bailing on this PacketEntities!\n");
-							return;
-						}
-						entities.push_back(*pEntity);
-					}
-					break;
-
-					case LeavePVS:
-					{
-						if (!bAsDelta)  // Should never happen on a full update.
-						{
-							printf("WARNING: LeavePVS on full update");
-							updateType = Failed;	// break out
-							assert(0);
-						}
-						else
-						{
-							if (g_bDumpPacketEntities)
-							{
-								if (UpdateFlags & FHDR_DELETE)
-								{
-									printf("Entity leaves PVS and is deleted: id:%d\n", nNewEntity);
-								}
-								else
-								{
-									printf("Entity leaves PVS: id:%d\n", nNewEntity);
-								}
-							}
-							RemoveEntity(nNewEntity);
-						}
-					}
-					break;
-
-					case DeltaEnt:
-					{
-						EntityEntry *pEntity = FindEntity(nNewEntity);
-						if (pEntity)
-						{
-							if (!ReadNewEntity(entityBitBuffer, pEntity))
-							{
-								printf("*****Error reading entity! Bailing on this PacketEntities!\n");
-								return;
-							}
-							printf( "Entity Delta update: id:%d, class:%d, serial:%d\n", pEntity->m_nEntity, pEntity->m_uClass, pEntity->m_uSerialNum );
-							entities.push_back(*pEntity);
-						}
-						else
-						{
-							assert(0);
-						}
-					}
-					break;
-
-					case PreserveEnt:
-					{
-						if (!bAsDelta)  // Should never happen on a full update.
-						{
-							printf("WARNING: PreserveEnt on full update");
-							updateType = Failed;	// break out
-							assert(0);
-						}
-						else
-						{
-							if (nNewEntity >= MAX_EDICTS)
-							{
-								printf("PreserveEnt: nNewEntity == MAX_EDICTS");
-								assert(0);
-							}
-							else
-							{
-								if (g_bDumpPacketEntities)
-								{
-									printf("PreserveEnt: id:%d\n", nNewEntity);
-								}
-							}
-						}
-					}
-					break;
-					default:
-						break;
 				}
 			}
 		}
 	}
 }
+
+bool CNetMessageDecoder::EntityEnterPVS(CBitRead entityBitBuffer, int newEntity)
+{
+	uint32 uClass = entityBitBuffer.ReadUBitLong(m_nServerClassBits);
+	uint32 uSerialNum = entityBitBuffer.ReadUBitLong(NUM_NETWORKED_EHANDLE_SERIAL_NUMBER_BITS);
+
+	EntityEntry *pEntity = AddEntity(newEntity, uClass, uSerialNum);
+
+	return ReadNewEntity(entityBitBuffer, pEntity);
+}
+
+bool CNetMessageDecoder::EntityLeavePVS(int newEntity, bool isDelta)
+{
+	if (!isDelta)  // Should never happen on a full update.
+	{
+		assert(!"WARNING: LeavePVS on full update");
+		return false;
+	}
+	RemoveEntity(newEntity);
+
+	return true;
+}
+
+bool CNetMessageDecoder::EntityDelta(CBitRead entityBitBuffer, int newEntity)
+{
+	EntityEntry *pEntity = FindEntity(newEntity);
+	if (pEntity)
+	{
+		if (!ReadNewEntity(entityBitBuffer, pEntity))
+		{
+			return false;
+		}
+		printf("Entity Delta update: id:%d, class:%d, serial:%d\n", pEntity->m_nEntity, pEntity->m_uClass, pEntity->m_uSerialNum);
+		//entities.push_back(*pEntity);
+	}
+	else
+	{
+		assert(0);
+	}
+}
+
