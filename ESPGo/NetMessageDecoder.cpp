@@ -19,11 +19,18 @@ EntityEntry* CNetMessageDecoder::FindEntity(int nEntity)
 
 int CNetMessageDecoder::ReadFieldIndex(CBitRead &entityBitBuffer, int lastIndex, bool bNewWay)
 {
-	int ret = 0;
+	if (bNewWay)
+	{
+		if (entityBitBuffer.ReadOneBit())
+		{
+			return lastIndex + 1;
+		}
+	}
 
+	int ret = 0;
 	if (bNewWay && entityBitBuffer.ReadOneBit())
 	{
-		return lastIndex + 1;
+		ret = entityBitBuffer.ReadUBitLong(3);  // read 3 bits
 	}
 	else
 	{
@@ -441,6 +448,7 @@ void CNetMessageDecoder::DecodeNetMessage(const void *parseBuffer, int bufferSiz
 				{
 					if (UpdateFlags & FHDR_ENTERPVS)
 					{
+						updateType = EnterPVS;
 						if (!EntityEnterPVS(entityBitBuffer, newEntity))
 						{
 							fprintf(stderr, "Error reading entity! Bailing on this PacketEntities!");
@@ -449,13 +457,17 @@ void CNetMessageDecoder::DecodeNetMessage(const void *parseBuffer, int bufferSiz
 					}
 					else if (UpdateFlags & FHDR_LEAVEPVS)
 					{
+						updateType = LeavePVS;
 						if (!EntityLeavePVS(newEntity, isDelta))
 							updateType = Failed;
 					}
 					else
 					{
-						EntityDelta(entityBitBuffer, newEntity);
-						fprintf(stderr, "Error reading entity! Bailing on this PacketEntities!");
+						updateType = DeltaEnt;
+						if (!EntityDelta(entityBitBuffer, newEntity))
+						{
+							fprintf(stderr, "Error reading entity! Bailing on this PacketEntities!");
+						}
 					}
 
 				}
@@ -464,7 +476,7 @@ void CNetMessageDecoder::DecodeNetMessage(const void *parseBuffer, int bufferSiz
 	}
 }
 
-bool CNetMessageDecoder::EntityEnterPVS(CBitRead entityBitBuffer, int newEntity)
+bool CNetMessageDecoder::EntityEnterPVS(CBitRead &entityBitBuffer, int newEntity)
 {
 	uint32 uClass = entityBitBuffer.ReadUBitLong(m_nServerClassBits);
 	uint32 uSerialNum = entityBitBuffer.ReadUBitLong(NUM_NETWORKED_EHANDLE_SERIAL_NUMBER_BITS);
@@ -486,7 +498,7 @@ bool CNetMessageDecoder::EntityLeavePVS(int newEntity, bool isDelta)
 	return true;
 }
 
-bool CNetMessageDecoder::EntityDelta(CBitRead entityBitBuffer, int newEntity)
+bool CNetMessageDecoder::EntityDelta(CBitRead &entityBitBuffer, int newEntity)
 {
 	EntityEntry *pEntity = FindEntity(newEntity);
 	if (pEntity)

@@ -16,9 +16,9 @@ private:
 	void GatherProps(CSVCMsg_SendTable *pTable, int nServerClass);
 	bool IsPropExcluded(CSVCMsg_SendTable * pTable, const CSVCMsg_SendTable::sendprop_t & checkSendProp);
 	void GatherProps_IterateProps(CSVCMsg_SendTable *pTable, int nServerClass, std::vector< FlattenedPropEntry > &flattenedProps);
-	bool EntityEnterPVS(CBitRead entityBitBuffer, int newEntity);
+	bool EntityEnterPVS(CBitRead &entityBitBuffer, int newEntity);
 	bool EntityLeavePVS(int newEntity, bool isDelta);
-	bool EntityDelta(CBitRead entityBitBuffer, int newEntity);
+	bool EntityDelta(CBitRead &entityBitBuffer, int newEntity);
 
 	bool g_bDumpPacketEntities = false;
 	int m_nServerClassBits;
